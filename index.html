@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Noche estrellada con flores amarillas</title>
+  <!-- p5.js desde CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <style>
+    html, body {
+      margin: 0; padding: 0; background: #000; overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script>
+/*
+  Noche estrellada + flores amarillas que florecen
+  Mensaje final: "Toma tus flores, querida."
+  Autor: ChatGPT (p5.js)
+*/
+
+let stars = [];
+let flowers = [];
+let startTime;
+let messageAlpha = 0;
+let skyNoiseOffset = 0;
+
+function setup() {
+  pixelDensity(window.devicePixelRatio || 1);
+  createCanvas(windowWidth, windowHeight);
+  startTime = millis();
+  initStars(220);            // cantidad de estrellas
+  initFlowers(10);           // cantidad de flores
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  // recolocar las flores cerca de la base en el nuevo tamaño
+  placeFlowersOnGround();
+}
+
+function draw() {
+  drawSkyGradient();
+  drawStars();
+
+  let t = (millis() - startTime) / 1000; // segundos transcurridos
+  // Fases suaves: 0-2s cielo/estrellas, 2-9s las flores crecen y florecen, 9s+ mensaje
+  for (let i = 0; i < flowers.length; i++) {
+    flowers[i].update(t);
+    flowers[i].display();
+  }
+
+  // Mensaje aparece cuando la mayoría ya floreció (aprox. >9s)
+  if (t > 9) {
+    messageAlpha = lerp(messageAlpha, 255, 0.02);
+    drawMessage("Toma tus flores, querida.");
+  }
+}
+
+/* === CIELO Y ESTRELLAS === */
+
+function drawSkyGradient() {
+  // degradado vertical noche (suave parpadeo muy leve con ruido)
+  skyNoiseOffset += 0.002;
+  for (let y = 0; y < height; y++) {
+    let n = noise(y * 0.005, skyNoiseOffset);
+    let c1 = color(5, 8, 25);    // azul muy oscuro
+    let c2 = color(0, 0, 0);     // negro
+    let mixAmt = map(y, 0, height, 0, 1);
+    let base = lerpColor(c1, c2, mixAmt);
+    // leve respiración del cielo
+    let breathe = map(n, 0, 1, -4, 4);
+    stroke(red(base) + breathe, green(base) + breathe, blue(base) + breathe);
+    line(0, y, width, y);
+  }
+}
+
+function initStars(count) {
+  stars = [];
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: random(width),
+      y: random(height * 0.75), // arriba y medio
+      r: random(0.5, 1.8),
+      tw: random(0.5, 2.0),     // velocidad de titilar
+      phase: random(TWO_PI)
+    });
+  }
+}
+
+function drawStars() {
+  noStroke();
+  for (let s of stars) {
+    let a = (sin(frameCount * 0.02 * s.tw + s.phase) * 0.5 + 0.5);
+    fill(255, 255, 220, 120 + a * 135);
+    circle(s.x, s.y, s.r * (1 + a * 0.8) * 2);
+  }
+}
+
+/* === FLORES === */
+
+class Flower {
+  constructor(x, groundY, delay) {
+    this.x = x;
+    this.groundY = groundY;     // nivel del suelo para esta flor
+    this.stemH = random(height * 0.18, height * 0.28);
+    this.stemProgress = 0;      // 0..1 crecimiento del tallo
+    this.bloomProgress = 0;     // 0..1 apertura de pétalos
+    this.delay = delay;         // retardo para escalonar las flores
+    this.petalCount = floor(random(8, 12));
+    this.petalLen = random(18, 28);
+    this.petalWidth = random(10, 15);
+    this.swaySeed = random(1000);
+    this.centerCol = color(240, 160, 40);  // centro anaranjado
+    // leve variación de amarillo
+    this.yellow = color(250, random(210, 235), 40);
+    // hoja (una o dos) que brota
+    this.leaves = [];
+    let leafN = random([1, 2]);
+    for (let i = 0; i < leafN; i++) {
+      this.leaves.push({
+        at: random(0.25, 0.75),               // posición a lo largo del tallo
+        side: random([ -1, 1 ]),              // izquierda/derecha
+        len: random(22, 34),
+        wid: random(10, 16),
+      });
+    }
+  }
+
+  update(t) {
+    // t es el tiempo global en segundos; aplicamos retardo por flor
+    let localT = max(0, t - this.delay);
+
+    // crecimiento del tallo: 0..1 entre 0s y ~2.5s
+    let stemTarget = constrain(localT / 2.5, 0, 1);
+    this.stemProgress = easeOutCubic(this.stemProgress, stemTarget, 0.07);
+
+    // apertura de flor: inicia tras brotar el tallo (~1.2s después)
+    let bloomStart = 1.2;
+    let bloomTarget = constrain((localT - bloomStart) / 2.8, 0, 1);
+    this.bloomProgress = easeOutCubic(this.bloomProgress, bloomTarget, 0.06);
+  }
+
+  display() {
+    // ligera oscilación del tallo por “brisa”
+    let sway = (noise(this.swaySeed + frameCount * 0.01) - 0.5) * 12; // grados
+
+    // base y punta del tallo según progreso
+    let topY = this.groundY - this.stemH * this.stemProgress;
+
+    // tallo
+    stroke(30, 110, 60);
+    strokeWeight(3);
+    push();
+    translate(this.x, this.groundY);
+    // dibujamos el tallo como una línea que “se curva” un poco con sway
+    let segments = 12;
+    let segLen = (this.groundY - topY) / segments;
+    let px = 0, py = 0;
+    for (let i = 1; i <= segments; i++) {
+      let ratio = i / segments;
+      let angle = radians(sway) * ratio;  // más curvatura hacia la punta
+      let nx = sin(angle) * 4 * ratio;    // leve desplazamiento x
+      let ny = -segLen;
+      stroke(30, 120 - ratio * 20, 70);
+      line(px, py, nx, py + ny);
+      px = nx; py = py + ny;
+    }
+    pop();
+
+    // hojas (brotan junto con el tallo)
+    noStroke();
+    for (let leaf of this.leaves) {
+      let yLeaf = lerp(this.groundY, topY, leaf.at);
+      let xLeaf = this.x + leaf.side * 6;
+      let open = this.stemProgress; // hojas aparecen con el tallo
+      push();
+      translate(xLeaf, yLeaf);
+      rotate(radians(leaf.side * (20 + 25 * open)));
+      fill(40, 140, 80, 220);
+      leafShape(0, 0, leaf.len * open, leaf.wid * open);
+      pop();
+    }
+
+    // flor (pétalos) en la punta
+    let cx = this.x + sin(radians(sway)) * 6 * this.stemProgress;
+    let cy = topY;
+    push();
+    translate(cx, cy);
+    // pétalos
+    for (let i = 0; i < this.petalCount; i++) {
+      let ang = (TWO_PI / this.petalCount) * i + sin(frameCount * 0.01) * 0.01;
+      let len = this.petalLen * (0.3 + 0.7 * this.bloomProgress);
+      let wid = this.petalWidth * (0.3 + 0.7 * this.bloomProgress);
+      push();
+      rotate(ang);
+      // borde suave del pétalo
+      let glow = 30 + 70 * this.bloomProgress;
+      fill(red(this.yellow), green(this.yellow), blue(this.yellow), 220);
+      noStroke();
+      ellipse(len * 0.5, 0, len, wid);              // pétalo principal
+      fill(255, 255, 180, glow * 0.6);              // brillo
+      ellipse(len * 0.55, 0, len * 0.6, wid * 0.6); // luz interior
+      pop();
+    }
+    // centro
+    noStroke();
+    fill(30, 20, 10, 120);
+    circle(0, 0, 10 + 8 * this.bloomProgress); // sombra
+    fill(this.centerCol);
+    circle(0, 0, 8 + 10 * this.bloomProgress);
+    pop();
+  }
+}
+
+function initFlowers(n) {
+  flowers = [];
+  let margin = 40;
+  let xs = [];
+  for (let i = 0; i < n; i++) {
+    xs.push(map(i, 0, n - 1, margin, width - margin));
+  }
+  // perturbar x para que no queden perfectamente alineadas
+  xs = xs.map(x => x + random(-30, 30));
+  let groundY = height * 0.86;
+  for (let i = 0; i < n; i++) {
+    let delay = 1.5 + i * 0.35 + random(-0.15, 0.15); // escalonado
+    flowers.push(new Flower(xs[i], groundY + random(-8, 8), delay));
+  }
+}
+
+function placeFlowersOnGround() {
+  let groundY = height * 0.86;
+  let margin = 40;
+  let n = flowers.length;
+  for (let i = 0; i < n; i++) {
+    let x = map(i, 0, n - 1, margin, width - margin) + random(-30, 30);
+    flowers[i].x = x;
+    flowers[i].groundY = groundY + random(-8, 8);
+  }
+}
+
+/* === DIBUJOS AUXILIARES === */
+
+function leafShape(x, y, len, wid) {
+  // hoja elíptica puntiaguda
+  push();
+  translate(x, y);
+  beginShape();
+  for (let a = 0; a <= PI; a += PI / 24) {
+    let px = cos(a) * wid;
+    let py = -sin(a) * len;
+    vertex(px, py);
+  }
+  for (let a = PI; a <= TWO_PI; a += PI / 24) {
+    let px = cos(a) * wid;
+    let py = -sin(a) * len * 0.4; // base más corta
+    vertex(px, py);
+  }
+  endShape(CLOSE);
+  pop();
+}
+
+function drawMessage(txt) {
+  push();
+  textAlign(CENTER, CENTER);
+  let pad = 18;
+  let fs = min(48, width * 0.05);
+  textSize(fs);
+  // sombra suave para legibilidad
+  drawingContext.shadowColor = 'rgba(0,0,0,0.6)';
+  drawingContext.shadowBlur = 12;
+  fill(255, 240, 210, messageAlpha); // cálido
+  noStroke();
+  text(txt, width / 2, height * 0.18);
+  pop();
+
+  // una pequeña firma de “luciérnagas” cerca del mensaje
+  if (messageAlpha > 10) {
+    for (let i = 0; i < 12; i++) {
+      let x = width / 2 + sin((frameCount + i * 8) * 0.03) * (40 + i * 2);
+      let y = height * 0.18 + cos((frameCount + i * 12) * 0.02) * (12 + i * 0.5);
+      noStroke();
+      fill(255, 255, 200, 120);
+      circle(x, y, 2 + (sin(frameCount * 0.05 + i) * 0.5 + 0.5) * 3);
+    }
+  }
+}
+
+/* === UTILIDADES === */
+
+function easeOutCubic(current, target, rate) {
+  // acercamiento suave a target (rate 0..1)
+  return current + (target - current) * (1 - pow(1 - rate, 3));
+}
+</script>
+</body>
+</html>
